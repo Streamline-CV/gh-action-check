@@ -1,0 +1,39 @@
+name: 'Streamline CV: check'
+description: 'Automates boring part of job application: run CV checks'
+inputs:
+  githubKey:
+    description: 'Standard GitHub key.'
+    required: true
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v2
+    - name: Install Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.21
+    - uses: reviewdog/action-setup@v1
+      with:
+        reviewdog_version: latest
+    - name: Download artifact
+      id: download-artifact
+      uses: actions/download-artifact@v4
+    - name: Build tool
+      shell: bash
+      run: |
+        set -euo pipefail
+        go install github.com/Streamline-CV/streamline-cv/cmd@latest
+        mv ~/go/bin/{cmd,streamlinecv}
+    - name: Run checker
+      shell: bash
+      run: |
+        FILE_NAME=$(find pdf-artifacts -type f -name '*CV.pdf' -print -quit)
+        streamlinecv pdfcheck -c "$FILE_NAME" -o pdfcheck_rdf.json
+    - name: Run reviewdog
+      shell: bash
+      env:
+        REVIEWDOG_GITHUB_API_TOKEN: ${{ inputs.githubKey }}
+        ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT: true
+      run: |
+        set -o pipefail
+        cat pdfcheck_rdf.json | reviewdog -name="PDF check" -filter-mode=nofilter -f=rdjson -reporter=github-check -fail-on-error
